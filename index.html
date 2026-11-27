@@ -475,4 +475,666 @@ function makeSeedData(){
   const vehs = ['INT-101 · 1234ABC','INT-104 · 2345DEF','INT-208 · 3456GHI','INT-312 · 4567JKL','INT-405 · 5678MNO','INT-519 · 6789PQR'];
   const rows = [];
   let seed = 20261125;
-  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed /
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+
+  const start = new Date(2025,10,1);
+  const end = new Date(2026,10,23);
+  for(let d = new Date(start); d <= end; d.setDate(d.getDate()+1)){
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const dayNum = d.getDate();
+    const jsDay = d.getDay();
+    const dow = jsDay === 0 ? 6 : jsDay - 1;
+    const iso = `${y}-${String(m+1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+    const count = 8 + Math.floor(rnd()*9);
+    for(let i=0;i<count;i++){
+      const sec = sectors[Math.floor(rnd()*sectors.length)];
+      const isAv = sec.startsWith('AR-');
+      const turnoSec = isAv ? 'Avenidas' : (rnd() < 0.52 ? 'Noche' : 'Día');
+      const fueraTurno = rnd() < 0.045;
+      const turnoReal = fueraTurno ? (turnoSec === 'Noche' ? 'Día' : 'Noche') : (turnoSec === 'Avenidas' ? (rnd()<0.5?'Noche':'Día') : turnoSec);
+      const ton = +(4.2 + rnd()*9.5).toFixed(2);
+      const min = +(12 + rnd()*22).toFixed(1);
+      rows.push({
+        fecha: iso, y, m, dayNum, dow,
+        servicio: isAv ? 'Barrido / Avenidas' : servs[Math.floor(rnd()*servs.length)],
+        proveedor: provs[Math.floor(rnd()*provs.length)],
+        turnoSec, turnoReal,
+        zona: zonas[Math.floor(rnd()*zonas.length)],
+        tipoCamion: tipos[Math.floor(rnd()*tipos.length)],
+        frecuencia: SECFREC[sec] || 'L-M-V',
+        sector: sec,
+        barrio: BARR[sec] || ('Sector ' + sec),
+        vehiculo: vehs[Math.floor(rnd()*vehs.length)],
+        ton,
+        prod: rnd() < 0.62,
+        sobre: ton > 11.8,
+        rec: !isAv && rnd() < 0.65,
+        min,
+        falla: rnd() < 0.015,
+        fueraTurno
+      });
+    }
+  }
+  return rows;
+}
+
+const EMB = makeSeedData();
+let ALL_ROWS = [];
+let FILTERED = [];
+let selectedSector = '';
+let currentPlan = 'noche';
+let zoomLevel = 1;
+
+const state = {
+  y: '', m: '', dow: '', dayNum: '',
+  servicio: '', proveedor: '', turnoSec: '', zona: '', tipoCamion: '', frecuencia: '', sector: '',
+  qsSector: '', qsVehiculo: '', qsEntidad: ''
+};
+
+function setData(rows){
+  ALL_ROWS = Array.isArray(rows) ? rows : [];
+  selectedSector = '';
+  state.sector = '';
+  buildStaticPills();
+  cascade();
+  apply();
+}
+
+function buildStaticPills(){
+  const years = [...new Set(ALL_ROWS.map(r=>r.y))].sort();
+  const yWrap = document.getElementById('yearPills');
+  yWrap.innerHTML = '';
+  years.forEach(y => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pill' + (String(state.y)===String(y)?' active':'');
+    b.textContent = y;
+    b.onclick = () => { state.y = state.y===String(y) ? '' : String(y); cascade(); apply(); };
+    yWrap.appendChild(b);
+  });
+
+  const mWrap = document.getElementById('monthPills');
+  mWrap.innerHTML = '';
+  MESES.forEach((lbl, idx) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pill' + (state.m===String(idx)?' active':'');
+    b.textContent = lbl;
+    b.onclick = () => { state.m = state.m===String(idx) ? '' : String(idx); cascade(); apply(); };
+    mWrap.appendChild(b);
+  });
+
+  const dWrap = document.getElementById('dowPills');
+  dWrap.innerHTML = '';
+  DOWS.forEach((lbl, idx) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pill' + (state.dow===String(idx)?' active':'');
+    b.textContent = lbl;
+    b.onclick = () => { state.dow = state.dow===String(idx) ? '' : String(idx); cascade(); apply(); };
+    dWrap.appendChild(b);
+  });
+}
+
+function matchBaseFilters(r, excludeKey=''){
+  if(excludeKey!=='y' && state.y!=='' && String(r.y)!==state.y) return false;
+  if(excludeKey!=='m' && state.m!=='' && String(r.m)!==state.m) return false;
+  if(excludeKey!=='dow' && state.dow!=='' && String(r.dow)!==state.dow) return false;
+  if(excludeKey!=='dayNum' && state.dayNum!=='' && String(r.dayNum)!==state.dayNum) return false;
+  if(excludeKey!=='servicio' && state.servicio!=='' && r.servicio!==state.servicio) return false;
+  if(excludeKey!=='proveedor' && state.proveedor!=='' && r.proveedor!==state.proveedor) return false;
+  if(excludeKey!=='turnoSec' && state.turnoSec!=='' && r.turnoSec!==state.turnoSec) return false;
+  if(excludeKey!=='zona' && state.zona!=='' && r.zona!==state.zona) return false;
+  if(excludeKey!=='tipoCamion' && state.tipoCamion!=='' && r.tipoCamion!==state.tipoCamion) return false;
+  if(excludeKey!=='frecuencia' && state.frecuencia!=='' && r.frecuencia!==state.frecuencia) return false;
+  if(excludeKey!=='sector' && state.sector!=='' && r.sector!==state.sector) return false;
+  return true;
+}
+
+function matchQuickSearch(r){
+  const qSec = state.qsSector.trim().toLowerCase();
+  if(qSec){
+    const sMatch = (r.sector||'').toLowerCase().includes(qSec) || (r.barrio||'').toLowerCase().includes(qSec) || ((BARR[r.sector]||'').toLowerCase().includes(qSec));
+    if(!sMatch) return false;
+  }
+  const qVeh = state.qsVehiculo.trim().toLowerCase();
+  if(qVeh){
+    const vMatch = (r.vehiculo||'').toLowerCase().includes(qVeh) || (r.tipoCamion||'').toLowerCase().includes(qVeh);
+    if(!vMatch) return false;
+  }
+  const qEnt = state.qsEntidad.trim().toLowerCase();
+  if(qEnt){
+    const eMatch = (r.proveedor||'').toLowerCase().includes(qEnt) || (r.servicio||'').toLowerCase().includes(qEnt) || (r.zona||'').toLowerCase().includes(qEnt) || (r.frecuencia||'').toLowerCase().includes(qEnt);
+    if(!eMatch) return false;
+  }
+  return true;
+}
+
+function fillSelect(id, vals, curVal, numeric=false){
+  const el = document.getElementById(id);
+  const sorted = [...vals].sort((a,b)=> numeric ? Number(a)-Number(b) : String(a).localeCompare(String(b)));
+  const firstLabel = id==='fZona' ? 'Todas' : 'Todos';
+  el.innerHTML = `<option value="">${firstLabel}</option>` + sorted.map(v => `<option value="${String(v)}" ${String(v)===String(curVal)?'selected':''}>${v}</option>`).join('');
+}
+
+function cascade(){
+  const availY = new Set(ALL_ROWS.filter(r=>matchBaseFilters(r,'y')).map(r=>r.y));
+  document.querySelectorAll('#yearPills .pill').forEach(b => {
+    const active = String(state.y) === b.textContent;
+    b.classList.toggle('active', active);
+    b.disabled = !availY.has(Number(b.textContent)) && !active;
+  });
+
+  const availM = new Set(ALL_ROWS.filter(r=>matchBaseFilters(r,'m')).map(r=>r.m));
+  document.querySelectorAll('#monthPills .pill').forEach((b, idx) => {
+    const active = state.m === String(idx);
+    b.classList.toggle('active', active);
+    b.disabled = !availM.has(idx) && !active;
+  });
+
+  const availD = new Set(ALL_ROWS.filter(r=>matchBaseFilters(r,'dow')).map(r=>r.dow));
+  document.querySelectorAll('#dowPills .pill').forEach((b, idx) => {
+    const active = state.dow === String(idx);
+    b.classList.toggle('active', active);
+    b.disabled = !availD.has(idx) && !active;
+  });
+
+  fillSelect('fDayNum', new Set(ALL_ROWS.filter(r=>matchBaseFilters(r,'dayNum')).map(r=>r.dayNum)), state.dayNum, true);
+  fillSelect('fServicio', new Set(ALL_ROWS.filter(r=>matchBaseFilters(r,'servicio')).map(r=>r.servicio)), state.servicio);
+  fillSelect('fProveedor', new Set(ALL_ROWS.filter(r=>matchBaseFilters(r,'proveedor')).map(r=>r.proveedor)), state.proveedor);
+  fillSelect('fTurnoSec', new Set(ALL_ROWS.filter(r=>matchBaseFilters(r,'turnoSec')).map(r=>r.turnoSec)), state.turnoSec);
+  fillSelect('fZona', new Set(ALL_ROWS.filter(r=>matchBaseFilters(r,'zona')).map(r=>r.zona)), state.zona);
+  fillSelect('fTipoCamion', new Set(ALL_ROWS.filter(r=>matchBaseFilters(r,'tipoCamion')).map(r=>r.tipoCamion)), state.tipoCamion);
+  fillSelect('fFrecuencia', new Set(ALL_ROWS.filter(r=>matchBaseFilters(r,'frecuencia')).map(r=>r.frecuencia)), state.frecuencia);
+  fillSelect('fSector', new Set(ALL_ROWS.filter(r=>matchBaseFilters(r,'sector')).map(r=>r.sector)), state.sector);
+}
+
+function apply(){
+  FILTERED = ALL_ROWS.filter(r => matchBaseFilters(r) && matchQuickSearch(r));
+  renderActiveQuickTags();
+  renderKPIs();
+  renderMap();
+  renderRanking();
+  renderCharts();
+  renderPivot();
+  renderVehicles();
+  renderNoPlan();
+  renderCov();
+}
+
+function renderActiveQuickTags(){
+  const box = document.getElementById('qsActiveTags');
+  const tags = [];
+  if(state.qsSector.trim()) tags.push({key:'qsSector', label:`Sector/Barrio: "${state.qsSector.trim()}"`});
+  if(state.qsVehiculo.trim()) tags.push({key:'qsVehiculo', label:`Vehículo: "${state.qsVehiculo.trim()}"`});
+  if(state.qsEntidad.trim()) tags.push({key:'qsEntidad', label:`Entidad/Zona: "${state.qsEntidad.trim()}"`});
+  if(selectedSector) tags.push({key:'mapSec', label:`Sector activo: ${selectedSector}`});
+
+  box.innerHTML = tags.map(t => `<span class="tag">${t.label}<button type="button" data-rm="${t.key}">×</button></span>`).join('');
+  box.querySelectorAll('button[data-rm]').forEach(btn => {
+    btn.onclick = () => {
+      const k = btn.getAttribute('data-rm');
+      if(k==='mapSec'){ selectedSector=''; state.sector=''; cascade(); }
+      else { state[k]=''; document.getElementById(k).value=''; }
+      apply();
+    };
+  });
+}
+
+function renderKPIs(){
+  const grid = document.getElementById('kpiGrid');
+  const order = ['ton','viajes','prom','prod','sobre','noche','r25','rfalla','rft'];
+  grid.innerHTML = order.map(key => {
+    const m = METRICS[key];
+    const v = m.val(FILTERED);
+    return `<div class="kpi">
+      <div class="k-lbl">${m.label}</div>
+      <div class="k-val">${m.fmt(v)}</div>
+      <div class="k-sub">${m.unit || 'registros'}</div>
+    </div>`;
+  }).join('');
+}
+
+function getSectorMetricMap(metricKey){
+  const bySec = {};
+  FILTERED.forEach(r => {
+    if(!bySec[r.sector]) bySec[r.sector] = [];
+    bySec[r.sector].push(r);
+  });
+  const m = METRICS[metricKey] || METRICS.ton;
+  const out = {};
+  Object.keys(bySec).forEach(sec => { out[sec] = m.val(bySec[sec]); });
+  return out;
+}
+
+function colorForValue(val, maxVal){
+  if(!val || maxVal<=0) return '#e5e7eb';
+  const ratio = Math.min(1, val / maxVal);
+  if(ratio < 0.25) return '#93c5fd';
+  if(ratio < 0.5) return '#60a5fa';
+  if(ratio < 0.75) return '#2563eb';
+  return '#1e3a8a';
+}
+
+function renderMap(){
+  const metricKey = document.getElementById('mapMetric').value;
+  const showVal = document.getElementById('chkShowVal').checked;
+  const vals = getSectorMetricMap(metricKey);
+  const maxVal = Math.max(0, ...Object.values(vals));
+  const plan = PLANS[currentPlan] || PLANS.noche;
+  const qSec = state.qsSector.trim().toLowerCase();
+
+  const shapes = plan.sectors.map(s => {
+    const v = vals[s.id] || 0;
+    const fill = colorForValue(v, maxVal);
+    const isSel = selectedSector === s.id || state.sector === s.id;
+    const isMatch = qSec && (s.id.toLowerCase().includes(qSec) || (BARR[s.id]||'').toLowerCase().includes(qSec));
+    const cls = ['sec-shape', isSel?'sec-selected':'', isMatch?'sec-match':''].filter(Boolean).join(' ');
+    const txtLabel = showVal && v ? `${s.id} (${v.toFixed(1)})` : s.id;
+    return `<g data-sec="${s.id}">
+      <rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="5" fill="${fill}" stroke="#374151" stroke-width="1.2" class="${cls}"/>
+      <text x="${s.x + s.w/2}" y="${s.y + s.h/2 + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="${v>maxVal*0.45?'#fff':'#111827'}" pointer-events="none">${txtLabel}</text>
+    </g>`;
+  }).join('');
+
+  document.getElementById('mapInner').innerHTML = `
+    <svg id="sectorSvg" viewBox="0 0 460 380">
+      <rect x="10" y="10" width="440" height="360" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+      <text x="230" y="32" text-anchor="middle" font-size="12" font-weight="700" fill="#1e293b">${plan.label} — Santa Cruz de la Sierra</text>
+      ${shapes}
+    </svg>`;
+
+  const inner = document.getElementById('mapInner');
+  inner.style.transform = `scale(${zoomLevel})`;
+
+  const tip = document.getElementById('tooltip');
+  inner.querySelectorAll('g[data-sec]').forEach(g => {
+    const secId = g.getAttribute('data-sec');
+    g.onmousemove = (e) => {
+      const sRows = FILTERED.filter(r=>r.sector===secId);
+      const ton = sRows.reduce((a,r)=>a+(r.ton||0),0);
+      tip.style.display = 'block';
+      tip.style.left = (e.clientX + 14) + 'px';
+      tip.style.top = (e.clientY + 14) + 'px';
+      tip.innerHTML = `<strong>Sector ${secId}</strong><br>${BARR[secId] || 'Zona urbana'}<br>Viajes: ${sRows.length} · Ton: ${ton.toFixed(1)} t`;
+    };
+    g.onmouseleave = () => { tip.style.display = 'none'; };
+    g.onclick = () => {
+      if(selectedSector === secId){
+        selectedSector = '';
+        state.sector = '';
+      } else {
+        selectedSector = secId;
+        state.sector = secId;
+      }
+      cascade();
+      apply();
+    };
+  });
+
+  document.getElementById('mapLegend').innerHTML = `
+    <span><i style="background:#e5e7eb"></i>Sin datos</span>
+    <span><i style="background:#93c5fd"></i>Bajo</span>
+    <span><i style="background:#60a5fa"></i>Medio</span>
+    <span><i style="background:#2563eb"></i>Alto</span>
+    <span><i style="background:#1e3a8a"></i>Máximo (${maxVal ? maxVal.toFixed(1) : '0'})</span>
+  `;
+}
+
+function renderRanking(){
+  const metricKey = document.getElementById('mapMetric').value;
+  const m = METRICS[metricKey] || METRICS.ton;
+  const vals = getSectorMetricMap(metricKey);
+  const entries = Object.entries(vals).sort((a,b)=>b[1]-a[1]).slice(0,30);
+  const maxV = entries.length ? entries[0][1] : 1;
+
+  document.getElementById('rankTitle').textContent = `Ranking: ${m.label}`;
+  document.getElementById('rankSub').textContent = `${Object.keys(vals).length} sectores con datos. Se muestran los ${entries.length} mayores.`;
+
+  const list = document.getElementById('rankList');
+  list.innerHTML = entries.map(([sec, val]) => {
+    const pct = maxV > 0 ? Math.max(2, (val / maxV) * 100) : 0;
+    return `<div class="rank-row" data-rsec="${sec}" title="${BARR[sec] || sec}">
+      <span style="font-weight:700">${sec}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+      <span class="rank-val">${m.fmt(val)}</span>
+    </div>`;
+  }).join('') || '<div class="sub">No hay registros para los filtros seleccionados.</div>';
+
+  list.querySelectorAll('.rank-row').forEach(row => {
+    row.onclick = () => {
+      const s = row.getAttribute('data-rsec');
+      selectedSector = selectedSector === s ? '' : s;
+      state.sector = selectedSector;
+      cascade();
+      apply();
+    };
+  });
+}
+
+function renderBarChartSvg(title, items){
+  const w = 420, h = 195, padL = 44, padR = 12, padT = 16, padB = 34;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+  const maxV = Math.max(1, ...items.map(x=>x.v));
+  const step = items.length ? innerW / items.length : innerW;
+  const barW = Math.max(8, step * 0.62);
+
+  const bars = items.map((it, i) => {
+    const bh = (it.v / maxV) * innerH;
+    const x = padL + i * step + (step - barW)/2;
+    const y = padT + innerH - bh;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" rx="3" fill="#2563eb"/>
+      <text x="${(x + barW/2).toFixed(1)}" y="${h - 14}" text-anchor="middle" font-size="9.5" fill="#4b5563">${it.k}</text>`;
+  }).join('');
+
+  return `<div class="card chart-box">
+    <h3>${title}</h3>
+    <div class="chart-svg-wrap">
+      <svg viewBox="0 0 ${w} ${h}">
+        <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+innerH}" stroke="#cbd5e1"/>
+        <line x1="${padL}" y1="${padT+innerH}" x2="${w-padR}" y2="${padT+innerH}" stroke="#cbd5e1"/>
+        <text x="${padL-6}" y="${padT+8}" text-anchor="end" font-size="9.5" fill="#6b7280">${maxV.toFixed(0)}</text>
+        <text x="${padL-6}" y="${padT+innerH}" text-anchor="end" font-size="9.5" fill="#6b7280">0</text>
+        ${bars}
+      </svg>
+    </div>
+  </div>`;
+}
+
+function renderCharts(){
+  const byMonth = MESES.map((mName, idx) => ({
+    k: mName,
+    v: FILTERED.filter(r=>r.m===idx).reduce((a,r)=>a+(r.ton||0),0)
+  }));
+
+  const byProvMap = {};
+  FILTERED.forEach(r => { byProvMap[r.proveedor] = (byProvMap[r.proveedor]||0) + (r.ton||0); });
+  const byProv = Object.entries(byProvMap).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k,v])=>({k:k.slice(0,11),v}));
+
+  const byTurnoMap = {};
+  FILTERED.forEach(r => { byTurnoMap[r.turnoReal] = (byTurnoMap[r.turnoReal]||0) + 1; });
+  const byTurno = Object.entries(byTurnoMap).map(([k,v])=>({k,v}));
+
+  document.getElementById('chartsGrid').innerHTML = [
+    renderBarChartSvg('Toneladas por mes', byMonth),
+    renderBarChartSvg('Toneladas por proveedor', byProv),
+    renderBarChartSvg('Viajes por turno real', byTurno)
+  ].join('');
+}
+
+function renderPivot(){
+  const tbl = document.getElementById('ptbl');
+  const days = [...new Set(FILTERED.map(r=>r.dayNum))].sort((a,b)=>a-b).slice(0,15);
+  const secs = [...new Set(FILTERED.map(r=>r.sector))].sort().slice(0,25);
+  if(!days.length || !secs.length){ tbl.innerHTML = '<tbody><tr><td>Sin datos</td></tr></tbody>'; return; }
+
+  const map = {};
+  FILTERED.forEach(r => {
+    map[`${r.sector}__${r.dayNum}`] = (map[`${r.sector}__${r.dayNum}`]||0) + (r.ton||0);
+  });
+
+  const thead = `<thead><tr><th>Sector</th>${days.map(d=>`<th class="num">D${d}</th>`).join('')}<th class="num">Total</th></tr></thead>`;
+  const tbody = `<tbody>${secs.map(s => {
+    let rowTot = 0;
+    const tds = days.map(d => {
+      const v = map[`${s}__${d}`] || 0;
+      rowTot += v;
+      return `<td class="num">${v ? v.toFixed(1) : '—'}</td>`;
+    }).join('');
+    return `<tr><td><strong>${s}</strong></td>${tds}<td class="num"><strong>${rowTot.toFixed(1)}</strong></td></tr>`;
+  }).join('')}</tbody>`;
+  tbl.innerHTML = thead + tbody;
+}
+
+function renderVehicles(){
+  const tbl = document.getElementById('vtbl');
+  const agg = {};
+  FILTERED.forEach(r => {
+    const key = r.vehiculo || r.tipoCamion || 'Sin vehículo';
+    if(!agg[key]) agg[key] = {ton:0, viajes:0};
+    agg[key].ton += (r.ton||0);
+    agg[key].viajes += 1;
+  });
+  const rows = Object.entries(agg).sort((a,b)=>b[1].ton-a[1].ton).slice(0,20);
+  tbl.innerHTML = `<thead><tr><th>Vehículo</th><th class="num">Viajes</th><th class="num">Toneladas</th></tr></thead><tbody>` +
+    (rows.map(([v,d])=>`<tr><td>${v}</td><td class="num">${d.viajes}</td><td class="num">${d.ton.toFixed(1)} t</td></tr>`).join('') || '<tr><td colspan="3">Sin datos</td></tr>') +
+    '</tbody>';
+}
+
+function renderNoPlan(){
+  const tbl = document.getElementById('ntbl');
+  const planSet = new Set(Object.values(PLANS).flatMap(p => p.sectors.map(s=>s.id)));
+  const missing = [...new Set(FILTERED.map(r=>r.sector).filter(s=>!planSet.has(s)))].sort();
+  tbl.innerHTML = `<thead><tr><th>Sector</th><th>Barrio / Referencia</th></tr></thead><tbody>` +
+    (missing.map(s=>`<tr><td>${s}</td><td>${BARR[s]||'No mapeado'}</td></tr>`).join('') || '<tr><td colspan="2">Todos los sectores filtrados tienen referencia en plano.</td></tr>') +
+    '</tbody>';
+}
+
+function renderCov(){
+  const box = document.getElementById('covCal');
+  const byDate = {};
+  FILTERED.forEach(r => { byDate[r.fecha] = (byDate[r.fecha]||0) + 1; });
+  const dates = Object.keys(byDate).sort().slice(-21);
+  box.innerHTML = dates.map(dt => {
+    const c = byDate[dt];
+    const cls = c >= 10 ? 'ok' : (c > 0 ? 'low' : 'none');
+    return `<div class="cov-day ${cls}"><strong>${dt.slice(5)}</strong><div>${c} viajes</div></div>`;
+  }).join('') || '<div class="sub">Sin cobertura en el rango actual.</div>';
+}
+
+function setupQuickSearch(){
+  const configs = [
+    {
+      inputId: 'qsSector',
+      sugId: 'sugSector',
+      stateKey: 'qsSector',
+      getCandidates: () => {
+        const map = new Map();
+        ALL_ROWS.forEach(r => {
+          const b = r.barrio || BARR[r.sector] || '';
+          const label = b ? `${r.sector} · ${b}` : r.sector;
+          if(!map.has(r.sector)) map.set(r.sector, {val: r.sector, label, meta: r.zona || ''});
+          if(b && !map.has('b:'+b)) map.set('b:'+b, {val: b, label: b, meta: r.sector});
+        });
+        return [...map.values()];
+      }
+    },
+    {
+      inputId: 'qsVehiculo',
+      sugId: 'sugVehiculo',
+      stateKey: 'qsVehiculo',
+      getCandidates: () => {
+        const map = new Map();
+        ALL_ROWS.forEach(r => {
+          if(r.vehiculo && !map.has(r.vehiculo)) map.set(r.vehiculo, {val: r.vehiculo, label: r.vehiculo, meta: r.tipoCamion || ''});
+          if(r.tipoCamion && !map.has('t:'+r.tipoCamion)) map.set('t:'+r.tipoCamion, {val: r.tipoCamion, label: r.tipoCamion, meta: 'Tipo'});
+        });
+        return [...map.values()];
+      }
+    },
+    {
+      inputId: 'qsEntidad',
+      sugId: 'sugEntidad',
+      stateKey: 'qsEntidad',
+      getCandidates: () => {
+        const map = new Map();
+        ALL_ROWS.forEach(r => {
+          if(r.proveedor && !map.has('p:'+r.proveedor)) map.set('p:'+r.proveedor, {val: r.proveedor, label: r.proveedor, meta: 'Proveedor'});
+          if(r.servicio && !map.has('s:'+r.servicio)) map.set('s:'+r.servicio, {val: r.servicio, label: r.servicio, meta: 'Servicio'});
+          if(r.zona && !map.has('z:'+r.zona)) map.set('z:'+r.zona, {val: r.zona, label: r.zona, meta: 'Zona'});
+        });
+        return [...map.values()];
+      }
+    }
+  ];
+
+  configs.forEach(cfg => {
+    const inp = document.getElementById(cfg.inputId);
+    const sug = document.getElementById(cfg.sugId);
+
+    const renderSug = () => {
+      const q = inp.value.trim().toLowerCase();
+      const list = cfg.getCandidates().filter(item =>
+        !q || item.label.toLowerCase().includes(q) || item.meta.toLowerCase().includes(q)
+      ).slice(0, 8);
+
+      if(!list.length){
+        sug.innerHTML = `<div class="qs-item"><span class="qs-meta">Sin coincidencias</span></div>`;
+        sug.classList.add('open');
+        return;
+      }
+      sug.innerHTML = list.map(it =>
+        `<div class="qs-item" data-val="${it.val.replace(/"/g,'&quot;')}"><span>${it.label}</span><span class="qs-meta">${it.meta}</span></div>`
+      ).join('');
+      sug.classList.add('open');
+
+      sug.querySelectorAll('.qs-item[data-val]').forEach(el => {
+        el.onmousedown = (ev) => {
+          ev.preventDefault();
+          const chosen = el.getAttribute('data-val');
+          inp.value = chosen;
+          state[cfg.stateKey] = chosen;
+          sug.classList.remove('open');
+          apply();
+        };
+      });
+    };
+
+    inp.addEventListener('input', () => {
+      state[cfg.stateKey] = inp.value;
+      renderSug();
+      apply();
+    });
+    inp.addEventListener('focus', renderSug);
+    inp.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter'){
+        const first = sug.querySelector('.qs-item[data-val]');
+        if(first){
+          inp.value = first.getAttribute('data-val');
+          state[cfg.stateKey] = inp.value;
+        }
+        sug.classList.remove('open');
+        apply();
+      } else if(e.key === 'Escape'){
+        sug.classList.remove('open');
+      }
+    });
+    inp.addEventListener('blur', () => setTimeout(() => sug.classList.remove('open'), 140));
+  });
+
+  document.querySelectorAll('.qs-clear').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.getAttribute('data-clear');
+      document.getElementById(id).value = '';
+      state[id] = '';
+      apply();
+    };
+  });
+
+  document.getElementById('btnClearQuickSearch').onclick = () => {
+    ['qsSector','qsVehiculo','qsEntidad'].forEach(id => {
+      document.getElementById(id).value = '';
+      state[id] = '';
+    });
+    apply();
+  };
+}
+
+function bindEvents(){
+  ['fDayNum','fServicio','fProveedor','fTurnoSec','fZona','fTipoCamion','fFrecuencia','fSector'].forEach(id => {
+    const prop = id.charAt(1).toLowerCase() + id.slice(2);
+    document.getElementById(id).onchange = (e) => {
+      state[prop] = e.target.value;
+      if(prop === 'sector') selectedSector = e.target.value;
+      cascade();
+      apply();
+    };
+  });
+
+  document.getElementById('btnReset').onclick = () => {
+    Object.keys(state).forEach(k => state[k] = '');
+    ['qsSector','qsVehiculo','qsEntidad'].forEach(id => document.getElementById(id).value = '');
+    selectedSector = '';
+    cascade();
+    apply();
+  };
+
+  document.querySelectorAll('#planPills .pill').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('#planPills .pill').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      currentPlan = b.getAttribute('data-plan');
+      renderMap();
+    };
+  });
+
+  document.getElementById('mapMetric').onchange = () => { renderMap(); renderRanking(); };
+  document.getElementById('chkShowVal').onchange = renderMap;
+  document.getElementById('btnZoomIn').onclick = () => { zoomLevel = Math.min(2.2, +(zoomLevel + 0.15).toFixed(2)); renderMap(); };
+  document.getElementById('btnZoomOut').onclick = () => { zoomLevel = Math.max(0.65, +(zoomLevel - 0.15).toFixed(2)); renderMap(); };
+  document.getElementById('btnZoomReset').onclick = () => { zoomLevel = 1; renderMap(); };
+
+  const modal = document.getElementById('admSec');
+  document.getElementById('btnOpenAdmin').onclick = () => modal.classList.add('open');
+  document.getElementById('btnCloseAdmin').onclick = () => modal.classList.remove('open');
+  document.getElementById('btnAdmLogin').onclick = () => {
+    const pass = document.getElementById('admPass').value;
+    if(pass === 'admin2026' || pass === '1234'){
+      document.getElementById('admAuth').classList.add('hidden');
+      document.getElementById('admPanel').classList.remove('hidden');
+      document.getElementById('admErr').textContent = '';
+    } else {
+      document.getElementById('admErr').textContent = 'Clave incorrecta.';
+    }
+  };
+
+  document.getElementById('xlFile').onchange = async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(ws, {defval:''});
+    const parsed = json.map((r, idx) => {
+      const fechaRaw = String(r.fecha || r.Fecha || '2026-11-01');
+      const d = new Date(fechaRaw.length===10 ? fechaRaw+'T12:00:00' : fechaRaw);
+      const validD = isNaN(d.getTime()) ? new Date(2026,10,1) : d;
+      const jsDay = validD.getDay();
+      return {
+        fecha: validD.toISOString().slice(0,10),
+        y: validD.getFullYear(),
+        m: validD.getMonth(),
+        dayNum: validD.getDate(),
+        dow: jsDay === 0 ? 6 : jsDay - 1,
+        servicio: String(r.servicio || r.Servicio || 'Domiciliaria'),
+        proveedor: String(r.proveedor || r.Proveedor || 'General'),
+        turnoSec: String(r.turnoSec || r.Turno || 'Noche'),
+        turnoReal: String(r.turnoReal || r.TurnoReal || r.Turno || 'Noche'),
+        zona: String(r.zona || r.Zona || 'DM 1'),
+        tipoCamion: String(r.tipoCamion || r.TipoCamion || 'Compactador'),
+        frecuencia: String(r.frecuencia || r.Frecuencia || 'L-M-V'),
+        sector: String(r.sector || r.Sector || `S-${idx+1}`),
+        barrio: String(r.barrio || r.Barrio || ''),
+        vehiculo: String(r.vehiculo || r.Vehiculo || r.Placa || ''),
+        ton: Number(r.ton ?? r.Toneladas ?? r.Peso ?? 0) || 0,
+        prod: Boolean(r.prod ?? true),
+        sobre: Boolean(r.sobre ?? false),
+        rec: Boolean(r.rec ?? true),
+        min: Number(r.min ?? r.Minutos ?? 20) || 0,
+        falla: Boolean(r.falla ?? false),
+        fueraTurno: Boolean(r.fueraTurno ?? false)
+      };
+    });
+    document.getElementById('xlStatus').textContent = `Cargados ${parsed.length} registros desde ${file.name}.`;
+    setData(parsed);
+  };
+}
+
+setupQuickSearch();
+bindEvents();
+setData(EMB);
+</script>
+</body>
+</html>
