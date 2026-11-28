@@ -112,83 +112,17 @@ td{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .empty{color:var(--muted);font-size:13px;padding:24px 0;text-align:center}
   @media (max-width: 768px) {
   html, body {
-    width: 100% !important;
-    max-width: 100% !important;
-    overflow-x: hidden !important;
-    padding-left: 8px !important;
-    padding-right: 8px !important;
-    box-sizing: border-box !important;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
   }
 
-  .wrap, .card, .filters, .kpis, [class*="kpi"], .grid, .row, .charts, .graficos {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    box-sizing: border-box !important;
-  }
-
-  .filters {
-    display: grid !important;
-    grid-template-columns: 1fr !important;
-    gap: 8px !important;
-  }
-
-  .kpis, [class*="kpi-grid"], .cards {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 8px !important;
-  }
-
-  [class*="mapa"], [class*="map"], .grid, .row, .charts, .graficos {
-    grid-template-columns: 1fr !important;
-  }
-
-  select, input, button {
-    max-width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-  }
-
-  button, [role="button"], .btn {
-    width: auto !important;
-  }
-
-  .map, .mapa, [class*="map"], [class*="mapa"], svg, canvas, img {
-    position: relative;
-    z-index: 1;
-    max-width: 100% !important;
-  }
-
-  table {
-    display: block;
-    max-width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    font-size: 11px !important;
-  }
-
-  th, td {
-    padding: 5px 6px !important;
-    white-space: nowrap;
-  }
-    .map-ranking, .mapa-ranking, [class*="mapa"] + *, [class*="map"] + * {
-    width: 100% !important;
-    max-width: 100% !important;
-  }
-
-  .card svg, .card canvas, .card img {
-    display: block;
-    max-width: 100% !important;
-    height: auto;
-    [class*="rank"] > *, .ranking > * {
-    margin-bottom: 4px !important;
-    padding-top: 2px !important;
-    padding-bottom: 2px !important;
-  }
-
-  [class*="rank"] [class*="bar"], .ranking [class*="bar"] {
-    height: 10px !important;
-  }
+  .wrap {
+    transform: scale(0.42);
+    transform-origin: top left;
+    width: 238%;
+    max-width: none !important;
+    margin: 0 !important;
   }
 }
 </style>
