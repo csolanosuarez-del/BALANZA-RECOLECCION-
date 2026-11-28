@@ -144,10 +144,19 @@ td{font-family:var(--mono);font-variant-numeric:tabular-nums}
   }
 
   select, input, button {
-    width: 100% !important;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  button, [role="button"], .btn {
+    width: auto !important;
+  }
+
+  .map, .mapa, [class*="map"], [class*="mapa"], svg, canvas, img {
+    position: relative;
+    z-index: 1;
     max-width: 100% !important;
-    min-width: 0 !important;
-    box-sizing: border-box !important;
   }
 
   table {
