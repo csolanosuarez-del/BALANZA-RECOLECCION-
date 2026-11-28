@@ -180,6 +180,15 @@ td{font-family:var(--mono);font-variant-numeric:tabular-nums}
     display: block;
     max-width: 100% !important;
     height: auto;
+    [class*="rank"] > *, .ranking > * {
+    margin-bottom: 4px !important;
+    padding-top: 2px !important;
+    padding-bottom: 2px !important;
+  }
+
+  [class*="rank"] [class*="bar"], .ranking [class*="bar"] {
+    height: 10px !important;
+  }
   }
 }
 </style>
