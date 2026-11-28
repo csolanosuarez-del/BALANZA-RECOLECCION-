@@ -702,7 +702,7 @@ function parseXlsx(buf){
   [['pr','productivo'],['so','sobrecarga'],['rf','sobre ref'],['fa','viaje con falla'],['de','desfase turno']].forEach(([k,c])=>cols[k]=num(c,Math.round));
   cols.tb=rows.map(r=>{const x=r[H('tiempo balanza')];return typeof x==='number'?Math.round(x*1440*10)/10:-1});
   let fr={};const hf=head.indexOf('frecuencia');
- if(c!=null&&v!=null){const k=String(c).trim(),x=String(v).trim().replace('Feriados','Feriados');if(x&&x!=='Sin dato'&&x!=='sin sector'&&!fr[k])fr[k]=x}}}
+ if(c!=null&&v!=null){const k=String(c).trim(),x=String(v).trim().replace('Feriados','Feriados');if(x&&x!=='Sin dato'&&x!=='sin sector'&&!fr[k])fr[k]=x}
   return{gen:new Date().toISOString().slice(0,19),dict,cols,fr};
 }
 
