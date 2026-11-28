@@ -701,8 +701,8 @@ function parseXlsx(buf){
   cols.d=rows.map(r=>Math.floor(Number(r[H('fecha2')])||0));cols.n=num('P_Neto',Math.round);
   [['pr','productivo'],['so','sobrecarga'],['rf','sobre ref'],['fa','viaje con falla'],['de','desfase turno']].forEach(([k,c])=>cols[k]=num(c,Math.round));
   cols.tb=rows.map(r=>{const x=r[H('tiempo balanza')];return typeof x==='number'?Math.round(x*1440*10)/10:-1});
-  let fr={};const hf=head.indexOf('frecuencia');
- if(c!=null&&v!=null){const k=String(c).trim(),x=String(v).trim().replace('Feriados','Feriados');if(x&&x!=='Sin dato'&&x!=='sin sector'&&!fr[k])fr[k]=x}
+ let fr={};const hf=head.indexOf('frecuencia');
+  if(hf>=0){rows.forEach(r=>{const k=String(r[H('Sector')]||'').trim(),v=String(r[hf]||'').trim().replace('Feriados','Feriados');if(k&&v&&v!=='Sin dato'&&v!=='sin sector'&&!fr[k])fr[k]=v})}
   return{gen:new Date().toISOString().slice(0,19),dict,cols,fr};
 }
 
